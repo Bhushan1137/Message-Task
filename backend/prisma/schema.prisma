@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum ProcessingResult {
+  APPLIED
+  IGNORED
+  DUPLICATE
+}
+
+model Tenant {
+  id        String    @id
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  messages  Message[]
+
+  @@map("tenants")
+}
+
+model Message {
+  id             String         @id @default(uuid())
+  tenantId       String
+  conversationId String
+  to             String
+  text           String         @db.Text
+  status         MessageStatus  @default(QUEUED)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  sentAt         DateTime?
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  failedAt       DateTime?
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  webhookEvents  WebhookEvent[]
+
+  @@index([tenantId])
+  @@index([tenantId, conversationId, createdAt, id])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("messages")
+}
+
+model WebhookEvent {
+  id               String           @id @default(uuid())
+  eventId          String           @unique
+  messageId        String
+  status           MessageStatus
+  occurredAt       DateTime
+  receivedAt       DateTime         @default(now())
+  processedAt      DateTime?
+  processingResult ProcessingResult
+  errorDetails     String?          @db.Text
+
+  message          Message          @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([processingResult])
+  @@index([receivedAt])
+  @@map("webhook_events")
+}
