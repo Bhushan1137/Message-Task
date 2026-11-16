@@ -169,6 +169,43 @@ class ApiClient {
     return res.data;
   }
 
+  async sendWebhookSimulation(payload: WebhookPayload): Promise<{
+    status: number;
+    ok: boolean;
+    data: any;
+  }> {
+    const url = `${API_BASE_URL}/api/v1/webhooks/provider`;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      let json: any = null;
+      try {
+        json = await response.json();
+      } catch {
+        json = { message: response.statusText };
+      }
+
+      return {
+        status: response.status,
+        ok: response.ok,
+        data: json,
+      };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network request failed';
+      return {
+        status: 0,
+        ok: false,
+        data: { success: false, error: { code: 'NETWORK_ERROR', message } },
+      };
+    }
+  }
+
   async getWebhookEvents(params?: {
     limit?: number;
     cursor?: string;

@@ -23,7 +23,10 @@ import {
   Copy,
   Clock,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function WebhookSimulatorContent() {
   const searchParams = useSearchParams();
@@ -40,7 +43,7 @@ function WebhookSimulatorContent() {
 
   // Result display states
   const [lastPayload, setLastPayload] = useState<WebhookPayload | null>(null);
-  const [lastResponse, setLastResponse] = useState<WebhookResponse | null>(null);
+  const [lastResponse, setLastResponse] = useState<any>(null);
   const [httpStatus, setHttpStatus] = useState<number | null>(null);
   const [previousEventPayload, setPreviousEventPayload] = useState<WebhookPayload | null>(null);
 
@@ -50,14 +53,23 @@ function WebhookSimulatorContent() {
     queryFn: () => api.getMessages({ limit: 50 }),
   });
 
-  // Fetch selected message details to show live current status
+  // Auto-select first message if available and none selected
+  useEffect(() => {
+    if (!selectedMessageId && messagesData?.messages && messagesData.messages.length > 0) {
+      setSelectedMessageId(messagesData.messages[0].id);
+    }
+  }, [messagesData, selectedMessageId]);
+
+  // Fetch selected message details to show live current status (only if valid UUID)
+  const isValidUuid = UUID_REGEX.test(selectedMessageId);
+
   const { data: currentMessage, refetch: refetchCurrentMessage } = useQuery({
     queryKey: ['message', currentTenantId, selectedMessageId],
-    queryFn: () => (selectedMessageId ? api.getMessage(selectedMessageId) : null),
-    enabled: !!selectedMessageId,
+    queryFn: () => (isValidUuid ? api.getMessage(selectedMessageId) : null),
+    enabled: isValidUuid,
   });
 
-  // Auto-generate eventId on load or status change
+  // Auto-generate eventId on load
   useEffect(() => {
     if (!eventId) {
       generateNewEventId();
@@ -79,42 +91,53 @@ function WebhookSimulatorContent() {
   const webhookMutation = useMutation({
     mutationFn: async (payload: WebhookPayload) => {
       setLastPayload(payload);
-      try {
-        const res = await api.sendWebhook(payload);
-        setHttpStatus(200);
-        return res;
-      } catch (err) {
-        setHttpStatus(err instanceof Error && err.message.includes('404') ? 404 : 400);
-        throw err;
-      }
+      return api.sendWebhookSimulation(payload);
     },
-    onSuccess: (data, variables) => {
-      setLastResponse(data);
+    onSuccess: (result, variables) => {
+      setHttpStatus(result.status);
+      setLastResponse(result.data);
       setPreviousEventPayload(variables);
 
-      // Invalidate relevant queries so UI stays synced
-      queryClient.invalidateQueries({ queryKey: ['message', currentTenantId, variables.messageId] });
-      queryClient.invalidateQueries({ queryKey: ['messages', currentTenantId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats', currentTenantId] });
-      queryClient.invalidateQueries({ queryKey: ['webhook-events', currentTenantId] });
-      queryClient.invalidateQueries({ queryKey: ['recent-webhook-activity', currentTenantId] });
-      refetchCurrentMessage();
+      if (result.ok && result.data?.success) {
+        const webhookData = result.data.data as WebhookResponse;
 
-      if (data.processingResult === 'APPLIED') {
-        success('Webhook APPLIED', `Message status updated to ${data.currentStatus}`);
-      } else if (data.processingResult === 'IGNORED') {
-        info('Webhook IGNORED', data.message);
-      } else if (data.processingResult === 'DUPLICATE') {
-        info('Webhook DUPLICATE', 'Event ID has already been recorded. No duplicate effect applied.');
+        // Invalidate relevant queries so UI stays synced
+        queryClient.invalidateQueries({ queryKey: ['message', currentTenantId, variables.messageId] });
+        queryClient.invalidateQueries({ queryKey: ['messages', currentTenantId] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats', currentTenantId] });
+        queryClient.invalidateQueries({ queryKey: ['webhook-events', currentTenantId] });
+        queryClient.invalidateQueries({ queryKey: ['recent-webhook-activity', currentTenantId] });
+        refetchCurrentMessage();
+
+        if (webhookData.processingResult === 'APPLIED') {
+          success('Webhook APPLIED', `Message status updated to ${webhookData.currentStatus}`);
+        } else if (webhookData.processingResult === 'IGNORED') {
+          info('Webhook IGNORED', webhookData.message);
+        } else if (webhookData.processingResult === 'DUPLICATE') {
+          info('Webhook DUPLICATE', 'Event ID has already been recorded. No duplicate effect applied.');
+        }
+
+        // Generate a new event ID for next action unless replaying
+        generateNewEventId();
+        setOccurredAt(new Date().toISOString());
+      } else {
+        // Handle error response (400, 404, 500)
+        const errorObj = result.data?.error;
+        let errorMessage = errorObj?.message || 'Webhook rejected by server';
+
+        if (errorObj?.details && Array.isArray(errorObj.details) && errorObj.details.length > 0) {
+          const detailStr = errorObj.details.map((d: any) => `${d.path}: ${d.message}`).join(', ');
+          errorMessage = `${errorMessage} (${detailStr})`;
+        }
+
+        error(`HTTP ${result.status} Error`, errorMessage);
       }
-
-      // Generate a new event ID for next action unless replaying
-      generateNewEventId();
-      setOccurredAt(new Date().toISOString());
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : 'Webhook dispatch failed';
-      error('Simulation Error', msg);
+      setHttpStatus(500);
+      setLastResponse({ success: false, error: { code: 'NETWORK_ERROR', message: msg } });
+      error('Network Error', msg);
     },
   });
 
@@ -172,7 +195,7 @@ function WebhookSimulatorContent() {
           <Radio className="w-6 h-6 text-indigo-600" />
           Provider Webhook Simulator
         </h2>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-600 mt-1">
           Simulate real incoming HTTP delivery events from messaging providers (WhatsApp, Meta, SMS).
           Tests atomic database transitions, out-of-order resolution, and idempotent duplicate rejection.
         </p>
@@ -254,7 +277,7 @@ function WebhookSimulatorContent() {
                 <button
                   type="button"
                   onClick={() => refetchMessages()}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                  className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-medium"
                 >
                   <RefreshCw className="w-3 h-3" /> Refresh
                 </button>
@@ -262,9 +285,9 @@ function WebhookSimulatorContent() {
               <select
                 value={selectedMessageId}
                 onChange={(e) => handleSelectMessage(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                className="w-full px-3 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition shadow-sm"
               >
-                <option value="">— Select a message —</option>
+                <option value="">— Select an existing message —</option>
                 {messagesData?.messages.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.id.substring(0, 8)}... | {m.status} | {m.to} | {m.conversationId}
@@ -275,16 +298,36 @@ function WebhookSimulatorContent() {
 
             {/* Raw Message ID Input */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Target Message ID (UUID)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Target Message ID (UUID)
+                </label>
+                {selectedMessageId && (
+                  <span
+                    className={`text-[11px] font-medium ${
+                      isValidUuid ? 'text-emerald-600' : 'text-amber-600'
+                    }`}
+                  >
+                    {isValidUuid ? '✓ Valid UUID format' : '⚠️ Non-UUID string'}
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 value={selectedMessageId}
                 onChange={(e) => setSelectedMessageId(e.target.value)}
                 placeholder="00000000-0000-0000-0000-000000000000"
-                className="w-full font-mono text-xs px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                className={`w-full font-mono text-xs px-3 py-2 rounded-lg border bg-white text-slate-900 focus:outline-none focus:ring-2 transition shadow-sm ${
+                  selectedMessageId && !isValidUuid
+                    ? 'border-amber-400 focus:ring-amber-500/20 focus:border-amber-500'
+                    : 'border-slate-300 focus:ring-indigo-500/20 focus:border-indigo-500'
+                }`}
               />
+              {selectedMessageId && !isValidUuid && (
+                <p className="text-[11px] text-amber-700 mt-1">
+                  Note: Backend requires a valid 36-character UUID. Non-UUID strings will return HTTP 400 (Validation Error).
+                </p>
+              )}
             </div>
 
             {/* Event ID with Generate Button */}
@@ -296,7 +339,7 @@ function WebhookSimulatorContent() {
                 <button
                   type="button"
                   onClick={() => generateNewEventId()}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                  className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-medium"
                 >
                   <Sparkles className="w-3 h-3" /> Generate New ID
                 </button>
@@ -306,7 +349,7 @@ function WebhookSimulatorContent() {
                 value={eventId}
                 onChange={(e) => setEventId(e.target.value)}
                 placeholder="evt-001"
-                className="w-full font-mono text-xs px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                className="w-full font-mono text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition shadow-sm"
               />
             </div>
 
@@ -319,7 +362,7 @@ function WebhookSimulatorContent() {
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value as any)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                  className="w-full px-3 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition shadow-sm"
                 >
                   <option value="SENT">SENT</option>
                   <option value="DELIVERED">DELIVERED</option>
@@ -336,16 +379,16 @@ function WebhookSimulatorContent() {
                   <button
                     type="button"
                     onClick={() => setOccurredAt(new Date().toISOString())}
-                    className="text-[11px] text-slate-500 hover:text-slate-700"
+                    className="text-[11px] text-slate-500 hover:text-slate-700 font-medium"
                   >
-                    Now
+                    Set to Now
                   </button>
                 </div>
                 <input
                   type="text"
                   value={occurredAt}
                   onChange={(e) => setOccurredAt(e.target.value)}
-                  className="w-full font-mono text-xs px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                  className="w-full font-mono text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition shadow-sm"
                 />
               </div>
             </div>
@@ -391,7 +434,9 @@ function WebhookSimulatorContent() {
               </div>
             ) : (
               <p className="text-xs text-slate-400 py-2">
-                Select or enter a valid Message ID on the left to observe state changes.
+                {selectedMessageId && !isValidUuid
+                  ? 'Non-UUID entered. Message cannot be looked up in PostgreSQL.'
+                  : 'Select or enter a valid Message ID on the left to observe state changes.'}
               </p>
             )}
           </div>
@@ -400,7 +445,7 @@ function WebhookSimulatorContent() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between text-xs">
               <span className="font-semibold text-slate-700">Outgoing JSON Request</span>
-              <span className="font-mono text-slate-400 text-[10px]">POST /api/v1/webhooks/provider</span>
+              <span className="font-mono text-slate-500 text-[10px]">POST /api/v1/webhooks/provider</span>
             </div>
             <pre className="p-4 bg-slate-950 text-slate-200 text-xs font-mono overflow-x-auto">
               {JSON.stringify(
@@ -420,11 +465,13 @@ function WebhookSimulatorContent() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between text-xs">
               <span className="font-semibold text-slate-700">API Response Body</span>
-              {httpStatus && (
+              {httpStatus !== null && (
                 <span
                   className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
                     httpStatus === 200
                       ? 'bg-emerald-100 text-emerald-800'
+                      : httpStatus === 404
+                      ? 'bg-amber-100 text-amber-800'
                       : 'bg-rose-100 text-rose-800'
                   }`}
                 >
@@ -433,32 +480,53 @@ function WebhookSimulatorContent() {
               )}
             </div>
 
-            {lastResponse ? (
+            {lastResponse !== null ? (
               <div className="p-4 space-y-3">
                 {/* Visual Status Indicator Banner */}
-                <div
-                  className={`p-3 rounded-lg border text-xs flex items-center gap-2.5 ${
-                    lastResponse.processingResult === 'APPLIED'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                      : lastResponse.processingResult === 'IGNORED'
-                      ? 'bg-amber-50 border-amber-200 text-amber-900'
-                      : 'bg-slate-100 border-slate-300 text-slate-900'
-                  }`}
-                >
-                  {lastResponse.processingResult === 'APPLIED' && (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  )}
-                  {lastResponse.processingResult === 'IGNORED' && (
-                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                  )}
-                  {lastResponse.processingResult === 'DUPLICATE' && (
-                    <Copy className="w-4 h-4 text-slate-600 shrink-0" />
-                  )}
-                  <div>
-                    <span className="font-bold mr-1">[{lastResponse.processingResult}]</span>
-                    {lastResponse.message}
+                {httpStatus === 200 && lastResponse?.data && (
+                  <div
+                    className={`p-3 rounded-lg border text-xs flex items-center gap-2.5 ${
+                      lastResponse.data.processingResult === 'APPLIED'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                        : lastResponse.data.processingResult === 'IGNORED'
+                        ? 'bg-amber-50 border-amber-200 text-amber-900'
+                        : 'bg-slate-100 border-slate-300 text-slate-900'
+                    }`}
+                  >
+                    {lastResponse.data.processingResult === 'APPLIED' && (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    )}
+                    {lastResponse.data.processingResult === 'IGNORED' && (
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    )}
+                    {lastResponse.data.processingResult === 'DUPLICATE' && (
+                      <Copy className="w-4 h-4 text-slate-600 shrink-0" />
+                    )}
+                    <div>
+                      <span className="font-bold mr-1">[{lastResponse.data.processingResult}]</span>
+                      {lastResponse.data.message}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* Error Banner when HTTP != 200 */}
+                {httpStatus !== 200 && (
+                  <div className="p-3 rounded-lg border bg-rose-50 border-rose-200 text-rose-900 text-xs space-y-1">
+                    <div className="flex items-center gap-2 font-bold">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>[{lastResponse?.error?.code || 'ERROR'}] {lastResponse?.error?.message || 'Request failed'}</span>
+                    </div>
+                    {lastResponse?.error?.details && (
+                      <ul className="list-disc list-inside text-[11px] text-rose-700 pl-6 space-y-0.5">
+                        {lastResponse.error.details.map((d: any, idx: number) => (
+                          <li key={idx}>
+                            <span className="font-mono font-semibold">{d.path}</span>: {d.message}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
 
                 <pre className="p-3 bg-slate-950 text-slate-200 text-xs font-mono rounded-lg overflow-x-auto">
                   {JSON.stringify(lastResponse, null, 2)}

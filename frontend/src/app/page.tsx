@@ -113,15 +113,15 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Platform Overview</h2>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-600 mt-1">
             Real-time delivery analytics & message lifecycle monitoring for{' '}
-            <span className="font-semibold text-slate-800 uppercase">{currentTenantId}</span>
+            <span className="font-semibold text-slate-900 uppercase">{currentTenantId}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleRefresh}
-            className="p-2 text-slate-500 hover:text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition"
+            className="p-2 text-slate-600 hover:text-slate-900 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition shadow-sm"
             title="Refresh Data"
           >
             <RefreshCw className="w-4 h-4" />

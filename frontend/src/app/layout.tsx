@@ -16,13 +16,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full bg-slate-50">
-      <body className="h-full flex text-slate-900 antialiased font-sans">
+      <body className="h-full flex text-slate-900 antialiased font-sans bg-slate-50">
         <Providers>
-          <div className="flex h-full w-full overflow-hidden">
+          <div className="flex h-full w-full overflow-hidden bg-slate-50">
             <Sidebar />
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50">
               <Topbar />
-              <main className="flex-1 overflow-y-auto p-6 lg:p-8 bg-slate-50/50">
+              <main className="flex-1 overflow-y-auto p-6 lg:p-8 bg-slate-50">
                 <div className="max-w-7xl mx-auto space-y-6">{children}</div>
               </main>
             </div>

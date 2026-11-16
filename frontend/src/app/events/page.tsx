@@ -58,15 +58,15 @@ export default function EventLogsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Webhook Event Logs</h2>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-600 mt-1">
             Immutable audit trail of all incoming provider webhook events for{' '}
-            <span className="font-semibold text-slate-800 uppercase">{currentTenantId}</span>
+            <span className="font-semibold text-slate-900 uppercase">{currentTenantId}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => refetch()}
-            className="p-2 text-slate-500 hover:text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition"
+            className="p-2 text-slate-600 hover:text-slate-900 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition shadow-sm"
             title="Refresh"
           >
             <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
@@ -91,17 +91,17 @@ export default function EventLogsPage() {
             value={messageIdFilter}
             onChange={(e) => setMessageIdFilter(e.target.value)}
             placeholder="Filter by Message UUID..."
-            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition shadow-sm"
           />
         </div>
 
         {/* Processing Result Filter */}
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <Filter className="w-4 h-4 text-slate-400 shrink-0 hidden sm:block" />
+          <Filter className="w-4 h-4 text-slate-500 shrink-0 hidden sm:block" />
           <select
             value={resultFilter}
             onChange={(e) => setResultFilter(e.target.value as ProcessingResult | '')}
-            className="w-full md:w-44 px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+            className="w-full md:w-44 px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition shadow-sm"
           >
             {results.map((r) => (
               <option key={r.value} value={r.value}>
