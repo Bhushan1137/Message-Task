@@ -32,22 +32,23 @@ A production-minded, full-stack multi-tenant messaging platform built with **Nex
 
 This entire project (both the **Next.js frontend** and the **Express.js backend**) is packaged as a **single unified monorepo** in one Git repository. There are no submodules, no separate repositories, and no detached trees.
 
-### Pushing This Project to Your GitHub Repository
+### GitHub Repository
 
-If you are publishing this project to your GitHub account:
+This repository is published on GitHub at:
+**[https://github.com/Bhushan1137/Message-Task](https://github.com/Bhushan1137/Message-Task)**
 
 ```bash
 # 1. From the project root, verify Git tracking status
 git status
 
-# 2. Add your GitHub remote repository (replace with your repo URL)
-git remote add origin https://github.com/<your-username>/<your-repo-name>.git
+# 2. Remote repository URL
+git remote add origin https://github.com/Bhushan1137/Message-Task.git
 
-# 3. Ensure branch name is main or master
-git branch -M master
+# 3. Main branch
+git branch -M main
 
 # 4. Push all commits (frontend, backend, migrations, and tests) to GitHub
-git push -u origin master
+git push -u origin main
 ```
 
 ### Why a Single Monorepo?
@@ -263,8 +264,8 @@ NEXT_PUBLIC_API_URL=http://localhost:4000
 
 #### 1. Clone the Single Monorepo Repository
 ```bash
-git clone https://github.com/<your-username>/<your-repo-name>.git
-cd <your-repo-name>
+git clone https://github.com/Bhushan1137/Message-Task.git
+cd Message-Task
 ```
 
 #### 2. Install All Dependencies (Single Root Command)
