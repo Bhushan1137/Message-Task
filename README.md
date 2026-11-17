@@ -6,28 +6,58 @@ A production-minded, full-stack multi-tenant messaging platform built with **Nex
 
 ## Table of Contents
 
-1. [Project Overview](#1-project-overview)
-2. [Key Features](#2-key-features)
-3. [Technology Stack](#3-technology-stack)
-4. [System Architecture](#4-system-architecture)
-5. [Folder Structure](#5-folder-structure)
-6. [Database Schema](#6-database-schema)
-7. [Environment Configuration](#7-environment-configuration)
-8. [Installation & Setup](#8-installation--setup)
-9. [Database Migrations & Seeding](#9-database-migrations--seeding)
-10. [Application Startup Commands](#10-application-startup-commands)
-11. [API Endpoint Documentation](#11-api-endpoint-documentation)
-12. [Webhook Business Logic & Idempotency](#12-webhook-business-logic--idempotency)
-13. [Tenant Isolation Model](#13-tenant-isolation-model)
-14. [Automated Testing & Results](#14-automated-testing--results)
-15. [Sample cURL Commands](#15-sample-curl-commands)
-16. [Technical Trade-Offs](#16-technical-trade-offs)
-17. [Known Limitations](#17-known-limitations)
-18. [Production Scalability & The Outbox Pattern](#18-production-scalability--the-outbox-pattern)
+1. [Single Repository Monorepo Architecture & GitHub Setup](#1-single-repository-monorepo-architecture--github-setup)
+2. [Project Overview](#2-project-overview)
+3. [Key Features](#3-key-features)
+4. [Technology Stack](#4-technology-stack)
+5. [System Architecture](#5-system-architecture)
+6. [Folder Structure](#6-folder-structure)
+7. [Database Schema](#7-database-schema)
+8. [Environment Configuration](#8-environment-configuration)
+9. [Installation & Setup](#9-installation--setup)
+10. [Database Migrations & Seeding](#10-database-migrations--seeding)
+11. [Application Startup Commands](#11-application-startup-commands)
+12. [API Endpoint Documentation](#12-api-endpoint-documentation)
+13. [Webhook Business Logic & Idempotency](#13-webhook-business-logic--idempotency)
+14. [Tenant Isolation Model](#14-tenant-isolation-model)
+15. [Automated Testing & Results](#15-automated-testing--results)
+16. [Sample cURL Commands](#16-sample-curl-commands)
+17. [Technical Trade-Offs](#17-technical-trade-offs)
+18. [Known Limitations](#18-known-limitations)
+19. [Production Scalability & The Outbox Pattern](#19-production-scalability--the-outbox-pattern)
 
 ---
 
-## 1. Project Overview
+## 1. Single Repository Monorepo Architecture & GitHub Setup
+
+This entire project (both the **Next.js frontend** and the **Express.js backend**) is packaged as a **single unified monorepo** in one Git repository. There are no submodules, no separate repositories, and no detached trees.
+
+### Pushing This Project to Your GitHub Repository
+
+If you are publishing this project to your GitHub account:
+
+```bash
+# 1. From the project root, verify Git tracking status
+git status
+
+# 2. Add your GitHub remote repository (replace with your repo URL)
+git remote add origin https://github.com/<your-username>/<your-repo-name>.git
+
+# 3. Ensure branch name is main or master
+git branch -M master
+
+# 4. Push all commits (frontend, backend, migrations, and tests) to GitHub
+git push -u origin master
+```
+
+### Why a Single Monorepo?
+- **Unified CI/CD**: Run linting, integration tests, and end-to-end tests across both client and server from a single root command.
+- **Atomic Commits**: Full-stack features (e.g. backend API updates and corresponding frontend screens) are tracked in cohesive Git commits.
+- **Shared Workspace Tooling**: Root `package.json` with npm workspaces (`backend` and `frontend`) enables starting both servers concurrently with `npm run dev`.
+
+---
+
+## 2. Project Overview
 
 In enterprise communications (e.g. WhatsApp Business API, Meta Cloud API, SMS gateways), downstream delivery notifications arrive asynchronously, frequently arrive out-of-order due to network retries, and can be duplicated. This platform provides:
 
@@ -38,7 +68,7 @@ In enterprise communications (e.g. WhatsApp Business API, Meta Cloud API, SMS ga
 
 ---
 
-## 2. Key Features
+## 3. Key Features
 
 - **Multi-Tenant Isolation**: Enforced at the middleware and query level via the `x-tenant-id` header. Cross-tenant reads or updates return HTTP 404.
 - **Out-of-Order Webhook Resolution**: Forward status jumps (`QUEUED` → `DELIVERED`, `QUEUED` → `READ`, `SENT` → `READ`) are safely applied, filling intermediate lifecycle timestamps. Stale backward events (e.g., `SENT` arriving after `READ`) are logged as `IGNORED` without mutating message state.
@@ -49,7 +79,7 @@ In enterprise communications (e.g. WhatsApp Business API, Meta Cloud API, SMS ga
 
 ---
 
-## 3. Technology Stack
+## 4. Technology Stack
 
 ### Frontend
 - **Framework**: Next.js 16 (App Router) with React 19 & TypeScript
@@ -73,7 +103,7 @@ In enterprise communications (e.g. WhatsApp Business API, Meta Cloud API, SMS ga
 
 ---
 
-## 4. System Architecture
+## 5. System Architecture
 
 ```
                                   +------------------------------------+
@@ -109,7 +139,7 @@ In enterprise communications (e.g. WhatsApp Business API, Meta Cloud API, SMS ga
 
 ---
 
-## 5. Folder Structure
+## 6. Folder Structure
 
 ```
 messaging-platform/
@@ -130,7 +160,7 @@ messaging-platform/
 │   │   └── server.ts                # HTTP server bootstrap
 │   ├── tests/
 │   │   ├── setup/                   # globalSetup, globalTeardown, testHelpers
-│   │   └── api.test.ts              # 22 comprehensive integration test suites
+│   │   └── api.test.ts              # 23 comprehensive integration test suites
 │   ├── jest.config.ts
 │   ├── tsconfig.json
 │   └── package.json
@@ -164,7 +194,7 @@ messaging-platform/
 
 ---
 
-## 6. Database Schema
+## 7. Database Schema
 
 ### `tenants`
 | Column | Type | Attributes | Description |
@@ -205,12 +235,12 @@ messaging-platform/
 
 ---
 
-## 7. Environment Configuration
+## 8. Environment Configuration
 
 Copy `.env.example` into `backend/.env` and `frontend/.env.local`:
 
 ```bash
-# Root / Backend configuration (.env)
+# Backend configuration (.env or backend/.env)
 PORT=4000
 NODE_ENV=development
 LOG_LEVEL=info
@@ -223,69 +253,94 @@ NEXT_PUBLIC_API_URL=http://localhost:4000
 
 ---
 
-## 8. Installation & Setup
+## 9. Installation & Setup
 
 ### Prerequisites
-- Node.js >= 18 (Node.js 20+ recommended)
-- PostgreSQL running locally on port 5432 OR Docker
+- **Node.js**: >= 18 (Node.js 20+ LTS recommended)
+- **PostgreSQL**: Docker OR locally installed PostgreSQL on port 5432
 
-### 1. Install Dependencies
+### Step-by-Step Setup Guide
+
+#### 1. Clone the Single Monorepo Repository
 ```bash
-# Install root, backend, and frontend dependencies
-npm install
-npm install --prefix backend
-npm install --prefix frontend
+git clone https://github.com/<your-username>/<your-repo-name>.git
+cd <your-repo-name>
 ```
 
-### 2. Start PostgreSQL (Docker option)
+#### 2. Install All Dependencies (Single Root Command)
+Using npm workspaces, running `npm install` from the repository root installs dependencies for both `backend` and `frontend`:
+```bash
+npm install
+```
+
+#### 3. Start PostgreSQL
+You can start PostgreSQL via Docker Compose:
 ```bash
 docker compose up -d
 ```
-*(If running native PostgreSQL, verify the service is running on port 5432 with username `postgres` and password `postgres`).*
+*(Alternatively, if using a local PostgreSQL installation, ensure PostgreSQL is running on port `5432` with username `postgres` and password `postgres`).*
 
----
-
-## 9. Database Migrations & Seeding
-
+#### 4. Run Database Migrations & Seeds
+Run Prisma migrations and populate initial tenants (`tenant-a` and `tenant-b`):
 ```bash
-# Run Prisma migrations
-npm run db:migrate --workspace=backend
-
-# Seed required tenants (tenant-a, tenant-b)
-npm run db:seed --workspace=backend
+npm run db:migrate
+npm run db:seed
 ```
 
 ---
 
-## 10. Application Startup Commands
+## 10. Database Migrations & Seeding Reference
 
-### Run Everything Concurrently
+The following root convenience scripts manage the database state:
+```bash
+# Run latest database migrations
+npm run db:migrate
+
+# Seed required tenants (tenant-a, tenant-b)
+npm run db:seed
+
+# Reset database (wipes and re-applies migrations + seed)
+npm run db:reset
+
+# Open Prisma Studio GUI
+npm run db:studio
+```
+
+---
+
+## 11. Application Startup Commands
+
+### Option A: Run Full Stack Concurrently (Recommended)
+From the repository root, run:
 ```bash
 npm run dev
 ```
+This concurrently starts:
+- **Express.js API**: [http://localhost:4000](http://localhost:4000)
+- **Next.js Dashboard**: [http://localhost:3000](http://localhost:3000)
 
-### Or Run Backend and Frontend Separately
+### Option B: Run Services Separately
 
-**Backend (Terminal 1):**
+**Terminal 1 — Backend:**
 ```bash
 npm run dev:backend
-# Server runs on http://localhost:4000
+# API available at http://localhost:4000
 ```
 
-**Frontend (Terminal 2):**
+**Terminal 2 — Frontend:**
 ```bash
 npm run dev:frontend
-# Dashboard opens on http://localhost:3000
+# Web UI available at http://localhost:3000
 ```
 
-### Production Build
+### Option C: Production Build
 ```bash
 npm run build
 ```
 
 ---
 
-## 11. API Endpoint Documentation
+## 12. API Endpoint Documentation
 
 ### A. Health Check
 ```http
@@ -415,7 +470,7 @@ x-tenant-id: tenant-a
 
 ---
 
-## 12. Webhook Business Logic & Idempotency
+## 13. Webhook Business Logic & Idempotency
 
 ### Status Transition Matrix
 The state machine enforces strict, non-regressive progression:
@@ -467,7 +522,7 @@ The state machine enforces strict, non-regressive progression:
 
 ---
 
-## 13. Tenant Isolation Model
+## 14. Tenant Isolation Model
 
 1. **Identity Extraction**: In this reference implementation, tenant identity is conveyed via the HTTP header `x-tenant-id`.
 2. **Body Verification**: If `tenantId` is included in the request body of `POST /api/v1/messages`, the controller validates that `body.tenantId === req.tenantId`. If they do not match, HTTP `400 VALIDATION_ERROR` is returned.
@@ -477,7 +532,7 @@ The state machine enforces strict, non-regressive progression:
 
 ---
 
-## 14. Automated Testing & Results
+## 15. Automated Testing & Results
 
 The automated test suite runs against an isolated PostgreSQL test database (`messaging_platform_test`).
 
@@ -486,7 +541,7 @@ The automated test suite runs against an isolated PostgreSQL test database (`mes
 npm run test:backend
 ```
 
-### Test Coverage Highlights (22 Passing Tests)
+### Test Coverage Highlights (23 Passing Tests)
 - **Health Check**: Validates 200 OK and DB connectivity.
 - **Message Creation**: Verifies required fields, E.164 phone regex, body vs header tenant validation, and initial `QUEUED` status.
 - **Message Retrieval**: Verifies ID lookups and 404 responses on cross-tenant access.
@@ -497,10 +552,11 @@ npm run test:backend
 - **Scenario D**: Tenant isolation verification (tenant-b cannot access tenant-a messages).
 - **Scenario E**: Concurrent race condition test firing simultaneous requests with identical `eventId` (verifies only one is accepted).
 - **Forward Jumps & Terminal Ignorals**: Verifies `QUEUED` → `DELIVERED` jump and ignoral of `SENT` after `FAILED`.
+- **Stale Timestamp Verification**: Verifies an incoming event with an older `occurredAt` timestamp is ignored.
 
 ---
 
-## 15. Sample cURL Commands
+## 16. Sample cURL Commands
 
 ### 1. Health Check
 ```bash
@@ -552,7 +608,7 @@ curl -X GET http://localhost:4000/api/v1/messages/<MESSAGE_UUID> \
 
 ---
 
-## 16. Technical Trade-Offs
+## 17. Technical Trade-Offs
 
 1. **Modular Monolith vs. Microservices**:
    - *Choice*: Built as a modular monorepo monolith with separate frontend and backend workspaces.
@@ -566,14 +622,14 @@ curl -X GET http://localhost:4000/api/v1/messages/<MESSAGE_UUID> \
 
 ---
 
-## 17. Known Limitations
+## 18. Known Limitations
 
 - **Simulated Provider Boundary**: In production, WhatsApp and Meta webhook requests include an `X-Hub-Signature-256` HMAC SHA-256 header that must be cryptographically verified using an app secret. In this assignment, signature verification is bypassed to enable seamless local simulation.
 - **Single Database Node**: Connection pooling and locking are bound to a single PostgreSQL instance. Highly distributed deployments would require connection pooling via PgBouncer or Supavisor.
 
 ---
 
-## 18. Production Scalability & The Outbox Pattern
+## 19. Production Scalability & The Outbox Pattern
 
 Under high traffic (e.g. 50,000+ webhook events per second), processing webhook events synchronously against PostgreSQL can exhaust database connection pools and induce lock contention.
 
