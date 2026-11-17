@@ -1,0 +1,331 @@
+{
+  "info": {
+    "_postman_id": "a2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
+    "name": "Multi-Tenant Messaging Platform API",
+    "description": "Comprehensive Postman collection for testing multi-tenant messaging, cursor pagination, out-of-order webhook simulation, and duplicate idempotency.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000",
+      "type": "string"
+    },
+    {
+      "key": "tenantId",
+      "value": "tenant-a",
+      "type": "string"
+    },
+    {
+      "key": "messageId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "conversationId",
+      "value": "conv-100",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Checks server status and database connectivity."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "Create Message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response && response.data && response.data.id) {",
+                  "    pm.collectionVariables.set('messageId', response.data.id);",
+                  "    console.log('Saved messageId: ' + response.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-tenant-id",
+                "value": "{{tenantId}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"tenant-a\",\n  \"conversationId\": \"conv-100\",\n  \"to\": \"+919876543210\",\n  \"text\": \"Hello! Your order #9821 has been confirmed.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "messages"]
+            },
+            "description": "Creates an outgoing message for authenticated tenant. Initial status will be QUEUED."
+          }
+        },
+        {
+          "name": "Get Message by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-tenant-id",
+                "value": "{{tenantId}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/messages/{{messageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "messages", "{{messageId}}"]
+            },
+            "description": "Retrieves message details and timestamps for the authenticated tenant."
+          }
+        },
+        {
+          "name": "Get Message - Cross-Tenant Access (Expects 404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-tenant-id",
+                "value": "tenant-b",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/messages/{{messageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "messages", "{{messageId}}"]
+            },
+            "description": "Verifies tenant isolation. Accessing tenant-a's message as tenant-b returns 404."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conversations",
+      "item": [
+        {
+          "name": "Get Conversation Messages (Cursor Pagination)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-tenant-id",
+                "value": "{{tenantId}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/conversations/{{conversationId}}/messages?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "conversations", "{{conversationId}}", "messages"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieves chronologically ordered messages for a conversation with cursor pagination."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks & Simulator",
+      "item": [
+        {
+          "name": "Simulate SENT Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventId\": \"evt-meta-sent-001\",\n  \"messageId\": \"{{messageId}}\",\n  \"status\": \"SENT\",\n  \"occurredAt\": \"2026-11-17T10:00:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks/provider",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "webhooks", "provider"]
+            },
+            "description": "Simulates external provider webhook transition QUEUED -> SENT."
+          }
+        },
+        {
+          "name": "Simulate DELIVERED Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventId\": \"evt-meta-deliv-002\",\n  \"messageId\": \"{{messageId}}\",\n  \"status\": \"DELIVERED\",\n  \"occurredAt\": \"2026-11-17T10:01:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks/provider",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "webhooks", "provider"]
+            },
+            "description": "Simulates transition to DELIVERED."
+          }
+        },
+        {
+          "name": "Simulate READ Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventId\": \"evt-meta-read-003\",\n  \"messageId\": \"{{messageId}}\",\n  \"status\": \"READ\",\n  \"occurredAt\": \"2026-11-17T10:02:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks/provider",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "webhooks", "provider"]
+            },
+            "description": "Simulates transition to terminal READ status."
+          }
+        },
+        {
+          "name": "Simulate Duplicate Event (Idempotency Test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventId\": \"evt-meta-read-003\",\n  \"messageId\": \"{{messageId}}\",\n  \"status\": \"READ\",\n  \"occurredAt\": \"2026-11-17T10:02:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks/provider",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "webhooks", "provider"]
+            },
+            "description": "Replaying the same eventId returns processingResult: DUPLICATE without re-applying side effects."
+          }
+        },
+        {
+          "name": "Simulate Out-of-Order Stale Event (Expects IGNORED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventId\": \"evt-meta-stale-004\",\n  \"messageId\": \"{{messageId}}\",\n  \"status\": \"SENT\",\n  \"occurredAt\": \"2026-11-17T09:59:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks/provider",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "webhooks", "provider"]
+            },
+            "description": "Sending a SENT event after READ returns processingResult: IGNORED and message remains READ."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Audit Event Logs",
+      "item": [
+        {
+          "name": "Get Webhook Event Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-tenant-id",
+                "value": "{{tenantId}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks/events?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "webhooks", "events"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "messageId",
+                  "value": "{{messageId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "processingResult",
+                  "value": "APPLIED",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Lists audit trail of all incoming provider webhook events for the tenant."
+          }
+        }
+      ]
+    }
+  ]
+}
