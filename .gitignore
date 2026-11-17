@@ -46,3 +46,6 @@ Thumbs.db
 
 # Database data directory
 .pgdata/
+
+# Submission archive
+submission.zip
