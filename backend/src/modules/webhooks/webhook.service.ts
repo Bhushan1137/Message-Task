@@ -102,16 +102,30 @@ export async function processWebhook(payload: WebhookPayload): Promise<WebhookRe
           };
         }
 
-        // 3. Determine if transition is valid
+        // 3. Check for stale event using occurredAt
+        // Collect all currently recorded lifecycle event timestamps
+        const recordedTimestamps = [msg.sentAt, msg.deliveredAt, msg.readAt, msg.failedAt]
+          .filter((d): d is Date => d !== null)
+          .map((d) => new Date(d).getTime());
+
+        const latestRecordedTime =
+          recordedTimestamps.length > 0 ? Math.max(...recordedTimestamps) : null;
+
+        const isStale =
+          latestRecordedTime !== null && occurredAt.getTime() < latestRecordedTime;
+
+        // 4. Determine if transition is valid
         const canTransition = isValidTransition(msg.status, incomingStatus);
+        const shouldApply = canTransition && !isStale;
 
         let processingResult: ProcessingResult;
+        let ignoreReason = '';
         let messageUpdate: Prisma.MessageUpdateInput = {};
 
-        if (canTransition) {
+        if (shouldApply) {
           processingResult = 'APPLIED';
 
-          // Build timestamp update - only set if not already set (never overwrite existing timestamps)
+          // Build timestamp update - set when first applied; never overwrite existing timestamps
           const tsField = getTimestampField(incomingStatus);
           if (tsField) {
             const existing = msg[tsField as keyof typeof msg] as Date | null;
@@ -125,10 +139,7 @@ export async function processWebhook(payload: WebhookPayload): Promise<WebhookRe
 
           // Apply forward jumps: if skipping statuses, fill intermediate timestamps
           if (incomingStatus === 'DELIVERED' && msg.status === 'QUEUED') {
-            // Jumped QUEUED -> DELIVERED, record sentAt if not set
-            if (!msg.sentAt) {
-              messageUpdate.sentAt = occurredAt;
-            }
+            if (!msg.sentAt) messageUpdate.sentAt = occurredAt;
           } else if (incomingStatus === 'READ') {
             if (msg.status === 'QUEUED') {
               if (!msg.sentAt) messageUpdate.sentAt = occurredAt;
@@ -155,18 +166,28 @@ export async function processWebhook(payload: WebhookPayload): Promise<WebhookRe
           );
         } else {
           processingResult = 'IGNORED';
+          if (isStale) {
+            ignoreReason = `Event ignored: event timestamp (${occurredAt.toISOString()}) is older than latest applied timestamp (${new Date(
+              latestRecordedTime!
+            ).toISOString()})`;
+          } else {
+            ignoreReason = `Event ignored: transition from ${msg.status} to ${incomingStatus} is not allowed`;
+          }
+
           logger.info(
             {
               eventId: payload.eventId,
               messageId: payload.messageId,
               currentStatus: msg.status,
               incomingStatus,
+              isStale,
+              reason: ignoreReason,
             },
-            'Webhook event ignored - invalid transition'
+            'Webhook event ignored'
           );
         }
 
-        // 4. Store the webhook event
+        // 5. Store the webhook event (even if ignored, distinct events must be persisted)
         const event = await tx.webhookEvent.create({
           data: {
             eventId: payload.eventId,
@@ -184,7 +205,7 @@ export async function processWebhook(payload: WebhookPayload): Promise<WebhookRe
           message:
             processingResult === 'APPLIED'
               ? `Status updated to ${incomingStatus}`
-              : `Event ignored: transition from ${msg.status} to ${incomingStatus} is not allowed`,
+              : ignoreReason,
           currentStatus: processingResult === 'APPLIED' ? incomingStatus : msg.status,
           eventId: payload.eventId,
           skipEventStore: false,

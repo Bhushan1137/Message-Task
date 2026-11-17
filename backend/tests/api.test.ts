@@ -380,6 +380,37 @@ describe('Webhook Processing - POST /api/v1/webhooks/provider', () => {
     // sentAt should also be populated on the forward jump
     expect(final.body.data.sentAt).toBeTruthy();
   });
+
+  it('ignores event when occurredAt is older than latest applied event timestamp (stale event)', async () => {
+    const msg = await createTestMessage();
+    const tNow = new Date();
+    const tPast = new Date(tNow.getTime() - 60000); // 1 minute in the past
+
+    // First event: SENT at tNow
+    const r1 = await request(app).post('/api/v1/webhooks/provider').send({
+      eventId: 'evt-time-1',
+      messageId: msg.id,
+      status: 'SENT',
+      occurredAt: tNow.toISOString(),
+    });
+    expect(r1.body.data.processingResult).toBe('APPLIED');
+
+    // Second event: DELIVERED, but with occurredAt in the past (before sentAt)
+    const r2 = await request(app).post('/api/v1/webhooks/provider').send({
+      eventId: 'evt-time-2',
+      messageId: msg.id,
+      status: 'DELIVERED',
+      occurredAt: tPast.toISOString(),
+    });
+    expect(r2.body.data.processingResult).toBe('IGNORED');
+    expect(r2.body.data.message).toContain('older than latest applied timestamp');
+
+    // Message status remains SENT
+    const final = await request(app)
+      .get(`/api/v1/messages/${msg.id}`)
+      .set('x-tenant-id', 'tenant-a');
+    expect(final.body.data.status).toBe('SENT');
+  });
 });
 
 describe('Event Logs - GET /api/v1/webhooks/events', () => {
